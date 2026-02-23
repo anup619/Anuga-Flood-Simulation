@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document explains how to configure and run flood simulations using the Param Shavak ANUGA pipeline.
+This document explains how to configure and run flood simulations using the ANUGA pipeline.
 
 This guide is intended for:
 - Flood modelers
@@ -10,7 +10,7 @@ This guide is intended for:
 - HPC job operators
 
 If environment is not installed → See INSTALL.md  
-If you only want to view results → See USER_GUIDE.md  
+If you only want to view results → See USER_GUIDE.md (desktop only)  
 
 ---
 
@@ -21,7 +21,7 @@ Before running any simulation:
 ✔ ANUGA installed successfully  
 ✔ MPI environment available  
 ✔ Simulation inputs ready (DEM, shapefiles, config)  
-✔ GeoServer running (only if auto deployment is needed)
+✔ GeoServer running (desktop Linux only — skip on HPC)
 
 ---
 
@@ -82,14 +82,31 @@ python3 mahanadi_test_case/simulate.py
 
 ---
 
-### HPC / Production Runs (MPI Parallel)
-
-Example:
+### Desktop Linux — MPI Parallel
 ```bash
 mpirun -np 16 python3 mahanadi_test_case/simulate.py
 ```
 
 Adjust `-np` based on available cores.
+
+---
+
+### HPC Clusters — Job Scheduler (Recommended)
+
+Do not run long simulations directly on the login node. Submit via job scheduler:
+
+**SLURM:**
+```bash
+sbatch run_anuga_job.sh
+```
+
+**PBS:**
+```bash
+qsub run_anuga_job.sh
+```
+
+Edit `run_anuga_job.sh` to set `--ntasks` and `--time` before submitting.
+A template is generated in the project root after `make setup`.
 
 ---
 
@@ -149,9 +166,11 @@ Location: `mahanadi_test_case/anuga_outputs/`
 
 ## 8. GeoServer Deployment Requirements
 
-Bridge requires GeoServer to be running.
+GeoServer is only available on desktop Linux. It is not installed on HPC clusters.
 
-Start if needed:
+On HPC, bridge.py will produce output files (.sww, .tif) locally. Transfer these to a desktop system for GeoServer deployment and dashboard visualization.
+
+On desktop Linux, start GeoServer if needed:
 ```bash
 make geoserver-start
 ```
@@ -160,8 +179,7 @@ Verify:
 curl -I http://localhost:8080/geoserver
 ```
 
-Expected:
-200 OR 302 response.
+Expected: 200 OR 302 response.
 
 ---
 
@@ -199,16 +217,31 @@ Parallel MPI scaling improves runtime but increases IO load.
 ---
 
 ## 11. Typical Workflow Summary
+
+### Desktop Linux
 ```plaintext
 Edit settings.toml
 ↓
-source setup_mpi_env.sh
+source build/setup_mpi_env.sh
 ↓
 mpirun simulate.py
 ↓
-bridge.py deploys outputs
+bridge.py deploys to GeoServer
 ↓
-View in dashboard
+View in dashboard (localhost:5173)
+```
+
+### HPC Cluster
+```plaintext
+Edit settings.toml
+↓
+source build/setup_mpi_env.sh
+↓
+sbatch run_anuga_job.sh  (or qsub)
+↓
+Copy .sww outputs to desktop system
+↓
+Deploy and view on desktop
 ```
 
 ---

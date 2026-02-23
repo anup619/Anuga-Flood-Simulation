@@ -13,23 +13,32 @@ This document is intended for:
 If you need to run simulations → See RUNNING.md  
 If you need to install system → See INSTALL.md  
 
+Note: The dashboard is only available on desktop Linux systems. It cannot be run on HPC clusters (no display, no browser). If simulations were run on HPC, outputs must be transferred to a desktop system first.
+
 ---
 
 ## 1. Accessing The Dashboard
 
-If your IT / HPC team has already started the system:
+If your IT / HPC team has already started the system on a desktop Linux machine:
 
 Open browser and go to:
 `http://localhost:5173`
 
-
 If you do not know the dashboard URL, contact your system operator.
+
+If simulations were run on an HPC cluster, the operator must first transfer the output files to the desktop system before the dashboard will show any data.
 
 ---
 
 ## 2. If Dashboard Is Not Running (Operator Section)
 
 If you are responsible for starting services:
+
+Note: All steps below apply to desktop Linux only. If simulations were run on HPC, copy output files from the cluster to this machine first:
+```bash
+scp user@hpc-cluster:/path/to/anuga_outputs/*.sww ./mahanadi_test_case/anuga_outputs/
+```
+Then run bridge.py manually to deploy to GeoServer before starting the dashboard.
 
 ---
 

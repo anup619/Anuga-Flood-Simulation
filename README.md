@@ -1,19 +1,28 @@
-# Param Shavak ANUGA | HPC-in-a-Box Flood Simulation System
+# ANUGA | Flood Simulation System
 
 ## Overview
 
-Param Shavak ANUGA is a **plug-and-play flood simulation pipeline** designed to run on HPC systems or powerful Linux workstations.
+This setup of ANUGA is a **plug-and-play flood simulation pipeline** designed to run on HPC clusters or Linux workstations.
 
 It packages the full workflow into one reproducible environment:
 
 - ANUGA flood simulation engine (MPI parallel capable)
 - Automated post-processing pipeline
-- GeoServer map publishing
-- React dashboard visualization
-- Optional 3D ANUGA viewer
+- GeoServer map publishing (desktop/workstation only)
+- React dashboard visualization (desktop/workstation only)
+- Optional 3D ANUGA viewer (desktop/workstation only)
 
 The goal is simple:
 Run one install → run simulation → visualize results.
+
+## Supported Environments
+
+| Environment | Example Systems | What Works |
+|---|---|---|
+| HPC cluster | Param Rudra, Param Shavak, any SLURM/PBS cluster | ANUGA simulation + MPI only |
+| Desktop Linux | Ubuntu 20.04+, Debian 11+, AlmaLinux 8+, RHEL 8+ | Full stack including GeoServer + dashboard |
+
+On HPC systems, GeoServer, Node, and the React dashboard are not installed or started. Simulation outputs (.sww files) should be copied to a desktop system for visualization.
 
 ---
 
@@ -35,6 +44,7 @@ Responsible for configuring simulations and generating outputs.
 
 ### Stakeholders / Dashboard Users
 Responsible only for viewing flood outputs on dashboard.
+Note: Dashboard is only available on desktop Linux systems, not on HPC clusters.
 
 ➡ Read: `USER_GUIDE.md`
 
@@ -57,18 +67,23 @@ All commands in docs assume you are inside repo root directory.
 
 ---
 
-### Step 1 — Install Full Stack
+### Step 1 — Install
+
+The setup script auto-detects your environment and installs accordingly.
+
+**On HPC (Param Rudra, Param Shavak, any SLURM/PBS cluster) — load MPI module first:**
+```bash
+module load openmpi-4.1.6
+export GEOTIFF_CSV=""
+CONDA_ENV_NAME=anuga-env make setup
+```
+
+**On desktop Linux (Ubuntu, Debian, AlmaLinux, etc.):**
 ```bash
 make setup
 ```
 
-This installs:
-- System dependencies
-- Python scientific stack
-- MPI + mpi4py
-- ANUGA core
-- GeoServer (if archive present)
-- Node.js (if archive present)
+See INSTALL.md for full details on what gets installed per environment.
 
 ---
 
@@ -79,9 +94,14 @@ source build/setup_mpi_env.sh
 mpirun -np 16 python3 mahanadi_test_case/simulate.py
 ```
 
+On HPC, submit via job scheduler instead — see RUNNING.md.
+
 ---
 
-### Step 3 — Start Visualization
+### Step 3 — Start Visualization (Desktop Linux Only)
+
+Not applicable on HPC clusters. Copy `.sww` output files to a desktop system to visualize.
+
 ```bash
 make geoserver-start
 source build/setup_tools_env.sh

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=anuga_simulation
-#SBATCH --partition=cpu
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=16
 #SBATCH --time=02:00:00
