@@ -11,6 +11,7 @@ class PathsConfig:
     dam_shp_path: str
     output_dir: str
     aoi_shp_path: str
+    hot_start_path: str
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,7 @@ class SimulationConfig:
 
 @dataclass(frozen=True)
 class InitialConditionsConfig:
-    initial_water_level_m: float
+    hot_start: bool
     friction_mannings_n: float
 
 
@@ -57,6 +58,7 @@ class ParallelConfig:
     
 @dataclass(frozen=True)
 class PostprocessingConfig:
+    postprocess : bool
     generate_timeseries: bool
     timeseries_steps: int
     timeseries_cellsize: float

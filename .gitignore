@@ -5,6 +5,7 @@ mahanadi_test_case/__pycache__
 mahanadi_test_case/anuga_outputs/*
 *.dem
 *.pts
+*.sww
 mahanadi_test_case/mesh_cache/*
 mahanadi_test_case/anuga_pmesh_gui.log
 opensource_tools/geoserver-2.28.2-bin
@@ -12,3 +13,4 @@ opensource_tools/node-v24.13.0-linux-x64
 opensource_tools/geoserver.out
 opensource_tools/anuga-viewer
 .venv
+mahanadi_test_case/input_files/mesh/*

@@ -1,32 +1,33 @@
 [paths]
 # These are relative to the folder where simulate.py lives
 name_stem = "mahanadi"
-output_file = "mahanadi_dam_release"
+output_file = "mahanadi_run_0"
 asc_path = "input_files/dem/mahanadi.asc"
 dam_shp_path = "input_files/shapfile/Mahanadi_Barrage_Upstream_Location1.shp"
 output_dir = "anuga_outputs"
 aoi_shp_path = "input_files/shapfile/AOI_Anuga.shp"
+hot_start_path = "input_files/hot_start.sww"
 
 [mesh]
 # Higher triangle area = faster but less accurate
-max_triangle_area_m2 = 900   # 150 * 150
+max_triangle_area_m2 = 10000
 min_angle_deg = 28.0
 use_cached_mesh = true
-mesh_file = "input_files/mesh" 
+mesh_cache_dir = "input_files/mesh"
 
 [dam_release]
 inlet_radius_m = 150.0
-peak_discharge_cumecs = 800.0     # m^3/s
+peak_discharge_cumecs = 600.0     # m^3/s
 base_discharge_cumecs = 150.0     # m^3/s
 
 [simulation]
 final_time_hours = 48.0
-yieldstep_s = 10800.0
+yieldstep_s = 3600.0
 cfl = 1.0
 print_simulation_logs = true
 
 [initial_conditions]
-initial_water_level_m = 0.0
+hot_start = false
 friction_mannings_n = 0.035
 
 [rainfall]
@@ -44,7 +45,8 @@ taper_minutes = 30.0
 enable = true
 
 [postprocessing]
-generate_timeseries = true
+postprocess = false
+generate_timeseries = false
 timeseries_steps = 25
 timeseries_cellsize = 10
 

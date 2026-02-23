@@ -5,7 +5,6 @@ import requests
 from requests.auth import HTTPBasicAuth
 import anuga
 from settings_loader import load_config
-from logger import log_run_metadata
 
 class AnugaGeoserverBridge:
     def __init__(self, settings_path: str, script_dir: str):
@@ -261,8 +260,8 @@ class AnugaGeoserverBridge:
             if os.path.exists(zip_path):
                 os.remove(zip_path)
             
-    def run_post_processing(self, target_sww_name: str = None, generate_timeseries: bool = False):
-        run_id = target_sww_name if target_sww_name else self.cfg.paths.output_file
+    def run_post_processing(self, run_id: str = None, generate_timeseries: bool = False):
+        
         sww_path = os.path.join(self.cfg.paths.output_dir, f"{run_id}.sww")
         
         asc_path = os.path.join(self.cfg.paths.output_dir, f"{run_id}_max_depth.asc")
@@ -301,8 +300,6 @@ class AnugaGeoserverBridge:
                 self.deploy_timeseries_to_geoserver(timeseries_dir, run_id)
             except Exception as e:
                 print(f"X Time series generation/deployment failed: {e}")
-        
-        log_run_metadata(self.cfg, run_id) 
 
         print(f"--- Finished. Result saved as: {os.path.basename(asc_path)} ---")
         print(f"Check your React dashboard for layer: {run_id}")

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import os
-import math
 import time
 from typing import Callable, Tuple, Dict, List
 
-import numpy as np
 import anuga
 import shapefile
+import netCDF4 as nc
+import numpy as np
 
 from config import Config
 
@@ -74,6 +74,25 @@ def read_polygon_from_shapefile(shp_path: str) -> List[Tuple[float, float]]:
         polygon.append(polygon[0])
     
     return polygon
+
+def get_stage_at_time(sww_path, target_time=None):
+    with nc.Dataset(sww_path, 'r') as fid:
+        times = fid.variables['time'][:]
+
+        if target_time is None:
+            t_idx = -1
+        else:
+            t_idx = np.argmin(np.abs(times - target_time))
+            print(f"Requested t={target_time}s, using closest: t={times[t_idx]:.1f}s (index {t_idx})")
+
+        if 'stage_c' in fid.variables:
+            stage = fid.variables['stage_c'][t_idx, :]  # shape: (n_triangles,)
+        else:
+            stage_v = fid.variables['stage'][t_idx, :]
+            vols = fid.variables['volumes'][:]
+            stage = np.mean(stage_v[vols], axis=1)
+
+    return stage
 
 # =============================================================================
 # Forcing builders
@@ -180,7 +199,11 @@ def run_simulation(cfg: Config) -> None:
             )
         else:
             print("  Rainfall: DISABLED")
-        print(f"  Initial stage: {cfg.initial_conditions.initial_water_level_m} m")
+        
+        if cfg.initial_conditions.hot_start:
+            print(f"  Hot Start: ENABLED, using file: {cfg.paths.hot_start_path}")
+        else:
+            print("  Hot Start: DISABLED")
         print(f"  Manning n: {cfg.initial_conditions.friction_mannings_n}")
         print(f"  Max triangle area: {cfg.mesh.max_triangle_area_m2} m^2")
         print("=" * 70)
@@ -274,6 +297,10 @@ def run_simulation(cfg: Config) -> None:
             verbose=False,
             alpha=0.1,
         )
+        
+        if cfg.initial_conditions.hot_start:
+            stage_ic = get_stage_at_time(cfg.paths.hot_start_path, target_time=172800)
+            domain.set_quantity('stage', stage_ic, location='centroids')
 
         if myid == 0:
             print(f"[rank 0] Mesh triangles: {domain.number_of_elements:,}")
@@ -286,7 +313,6 @@ def run_simulation(cfg: Config) -> None:
     if domain is None:
         raise RuntimeError("Domain was not created. Check MPI/parallel setup.")
 
-    domain.set_quantity("stage", cfg.initial_conditions.initial_water_level_m)
     domain.set_quantity("friction", cfg.initial_conditions.friction_mannings_n)
 
     if cfg.boundary.boundary_type == "reflective":

@@ -60,7 +60,8 @@ def load_config(settings_path: str, script_dir: str) -> Config:
             asc_path=_abs_path(script_dir, str(_require(paths, "asc_path", "paths"))),
             dam_shp_path=_abs_path(script_dir, str(_require(paths, "dam_shp_path", "paths"))),
             output_dir=_abs_path(script_dir, str(_require(paths, "output_dir", "paths"))),
-            aoi_shp_path=_abs_path(script_dir, str(paths.get("aoi_shp_path", "paths")))
+            aoi_shp_path=_abs_path(script_dir, str(paths.get("aoi_shp_path", "input_files/shapfile/AOI_Anuga.shp"))),
+            hot_start_path=_abs_path(script_dir, str(paths.get("hot_start_path", "input_files/hot_start.sww"))),  
         ),
         mesh=MeshConfig(
             max_triangle_area_m2=float(_require(mesh, "max_triangle_area_m2", "mesh")),
@@ -80,7 +81,7 @@ def load_config(settings_path: str, script_dir: str) -> Config:
             print_simulation_logs=bool(_require(sim, "print_simulation_logs", "simulation")),
         ),
         initial_conditions=InitialConditionsConfig(
-            initial_water_level_m=float(_require(init, "initial_water_level_m", "initial_conditions")),
+            hot_start=bool(_require(init, "hot_start", False)),
             friction_mannings_n=float(_require(init, "friction_mannings_n", "initial_conditions")),
         ),
         rainfall=RainfallConfig(
@@ -95,6 +96,7 @@ def load_config(settings_path: str, script_dir: str) -> Config:
             enable=bool(_require(parallel, "enable", "parallel")),
         ),
         postprocessing=PostprocessingConfig(
+            postprocess=bool(postproc.get("postprocess", False)),
             generate_timeseries=bool(postproc.get("generate_timeseries", False)),
             timeseries_steps=int(postproc.get("timeseries_steps", 25)),
             timeseries_cellsize=float(postproc.get("timeseries_cellsize", 10)),

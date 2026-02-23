@@ -4,7 +4,7 @@ import datetime
 from dataclasses import asdict
 from config import Config
 
-def log_run_metadata(cfg: Config, run_id: str):
+def log_run_metadata(cfg: Config, run_id: str, elapsed: float):
 
     log_dir = cfg.paths.output_dir
     history_file = os.path.join(log_dir, "simulation_history.jsonl")
@@ -20,7 +20,8 @@ def log_run_metadata(cfg: Config, run_id: str):
             "hpc": "Param Shavak",
             "os": "BOSS-OS",
             "status": "Completed"
-        }
+        },
+        "total_time": f"{elapsed/60:.1f} min"
     }
 
     try:
