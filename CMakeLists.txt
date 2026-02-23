@@ -4,37 +4,56 @@ project(ANUGA_Setup)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Use the exact Python that CMake finds (prevents "installed to wrong python" issues,
-# especially when conda is active)
+# Use the exact Python interpreter found (respects active conda env)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-find_package(PkgConfig REQUIRED)
-message(STATUS "Checking for required system packages...")
+# -----------------------------------------------------------------------
+# pkg-config / system library checks
+# On HPC these are optional — conda + module system provides the libs.
+# On desktop Linux (apt/dnf) these are required.
+# -----------------------------------------------------------------------
+find_package(PkgConfig QUIET)
 
-# GDAL (OPTIONAL) - only used for optional tooling (e.g., anuga-viewer), not required for ANUGA core
-pkg_check_modules(GDAL gdal)
-if(GDAL_FOUND)
-  message(STATUS "Found GDAL: ${GDAL_VERSION}")
+if(PKG_CONFIG_FOUND)
+  message(STATUS "pkg-config available — checking system libraries...")
+
+  # GDAL (optional everywhere)
+  pkg_check_modules(GDAL gdal)
+  if(GDAL_FOUND)
+    message(STATUS "Found GDAL: ${GDAL_VERSION}")
+  else()
+    message(STATUS "GDAL not found (ok — optional, only needed for anuga-viewer)")
+  endif()
+
+  # NetCDF
+  pkg_check_modules(NETCDF netcdf)
+  if(NETCDF_FOUND)
+    message(STATUS "Found NetCDF via pkg-config: ${NETCDF_VERSION}")
+  else()
+    message(STATUS "NetCDF not found via pkg-config (ok on HPC — conda provides netcdf4 at runtime)")
+  endif()
+
 else()
-  message(STATUS "GDAL not found (ok). Some GIS features (optional tools) will be unavailable.")
+  message(STATUS "pkg-config not available (common on HPC) — skipping system library checks")
+  message(STATUS "  netcdf4 and gdal will be provided by conda at runtime")
 endif()
 
-# NetCDF (required)
-pkg_check_modules(NETCDF REQUIRED netcdf)
-if(NETCDF_FOUND)
-  message(STATUS "Found NetCDF: ${NETCDF_VERSION}")
-else()
-  message(FATAL_ERROR "NetCDF not found. Install netcdf development package for your OS.")
-endif()
-
-# MPI (required)
+# -----------------------------------------------------------------------
+# MPI — required. On HPC, user must load MPI module before running cmake.
+# -----------------------------------------------------------------------
 find_package(MPI REQUIRED)
 if(MPI_FOUND)
   message(STATUS "Found MPI")
-  message(STATUS "MPI C compiler: ${MPI_C_COMPILER}")
-  message(STATUS "MPI CXX compiler: ${MPI_CXX_COMPILER}")
+  message(STATUS "  MPI C compiler  : ${MPI_C_COMPILER}")
+  message(STATUS "  MPI CXX compiler: ${MPI_CXX_COMPILER}")
 else()
-  message(FATAL_ERROR "MPI not found. Install OpenMPI/MPICH development package for your OS.")
+  message(FATAL_ERROR
+    "MPI not found.\n"
+    "Desktop: install libopenmpi-dev (apt) or openmpi-devel (dnf)\n"
+    "HPC:     load an MPI module first, e.g.:\n"
+    "           module load openmpi-4.1.6\n"
+    "         then re-run cmake"
+  )
 endif()
 
 # -----------------------------
@@ -44,7 +63,7 @@ set(ANUGA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/anuga_core")
 set(TOOLS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/opensource_tools")
 
 # -----------------------------
-# Clone ANUGA repository (idempotent)
+# Clone ANUGA (idempotent)
 # -----------------------------
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/clone_anuga.sh
 "#!/bin/bash
@@ -53,9 +72,8 @@ if [ ! -d \"${ANUGA_DIR}\" ]; then
   echo \"Cloning ANUGA repository...\"
   git clone https://github.com/GeoscienceAustralia/anuga_core.git \"${ANUGA_DIR}\"
   cd \"${ANUGA_DIR}\"
-  # NOTE: update this tag/branch as you prefer
   git checkout 3.2.0 || true
-  echo \"ANUGA repository cloned successfully.\"
+  echo \"ANUGA cloned (tag 3.2.0).\"
 else
   echo \"ANUGA source already present at ${ANUGA_DIR}\"
 fi
@@ -68,39 +86,48 @@ add_custom_target(clone_anuga
 )
 
 # -----------------------------
-# Write MPI env helper (single source of truth for PATH/LD_LIBRARY_PATH)
-# NOTE: This does NOT install anything. setup.sh is responsible for installs.
+# MPI environment helper
+# Works on both desktop (fixed paths) and HPC (module fallback)
 # -----------------------------
 set(MPI_ENV_CONTENT "#!/bin/bash
-# Source this file before running ANUGA with MPI
-# Compatible with both DNF-based (RHEL/Alma/Fedora) and APT-based (Debian/Ubuntu) systems
+# Source this before running ANUGA with MPI
+# Works on: Ubuntu/Debian, Rocky/AlmaLinux, HPC (Param Rudra etc.)
+# Usage: source build/setup_mpi_env.sh
 
-# Add user local bin to PATH (meson, etc.)
 export PATH=\"\$HOME/.local/bin:\$PATH\"
 
-# Try to locate MPI compiler if not already visible
+# HPC: try to load MPI module if mpicc not already in PATH
+if ! command -v mpicc >/dev/null 2>&1; then
+  if command -v module >/dev/null 2>&1; then
+    for mod in openmpi-4.1.6 compiler/openmpi/4.1.4 openmpi/4.1.4 \\
+               apps/intel_mpi_2021.14 compiler/oneapi2024/mpi/2021.11 mpich; do
+      module load \"\$mod\" 2>/dev/null && break || true
+    done
+  fi
+fi
+
+# Desktop: search known MPI paths
 if ! command -v mpicc >/dev/null 2>&1; then
   for d in \\
     /usr/lib64/openmpi/bin \\
     /usr/lib/openmpi/bin \\
     /usr/lib/x86_64-linux-gnu/openmpi/bin \\
     /usr/lib/aarch64-linux-gnu/openmpi/bin \\
-    /opt/openmpi/bin \\
-    /opt/ompi/bin \\
-    /usr/local/openmpi/bin; do
+    /opt/openmpi/bin /opt/ompi/bin \\
+    /usr/local/openmpi/bin \\
+    /home/apps/openmpi/bin; do
     if [ -x \"\$d/mpicc\" ]; then
       export PATH=\"\$d:\$PATH\"
       base=\"\$(dirname \"\$d\")\"
       [ -d \"\$base/lib64\" ] && export LD_LIBRARY_PATH=\"\$base/lib64:\${LD_LIBRARY_PATH:-}\"
       [ -d \"\$base/lib\" ]   && export LD_LIBRARY_PATH=\"\$base/lib:\${LD_LIBRARY_PATH:-}\"
-      echo \"MPI environment configured: \$d\"
       break
     fi
   done
 fi
 
 if command -v mpicc >/dev/null 2>&1; then
-  echo \"MPI compiler available: \$(command -v mpicc)\"
+  echo \"MPI compiler: \$(command -v mpicc)\"
 else
   echo \"WARNING: mpicc not found in PATH\"
 fi
@@ -108,61 +135,52 @@ fi
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh "${MPI_ENV_CONTENT}")
 
-# Create a custom target to ensure this file is written
 add_custom_target(write_env
   COMMAND ${CMAKE_COMMAND} -E echo "MPI environment script written"
-  COMMENT "Writing MPI environment setup script"
+  COMMENT "Writing MPI environment helper"
 )
 
 # -----------------------------
-# Build/install ANUGA (no deps here)
-# - setup.sh installs dependencies (python wheels, mpi4py, etc)
-# - this only installs anuga_core editable into the SAME Python interpreter
-# - MODIFIED: Uses --user flag to install to ~/.local instead of system directories
+# Build/install ANUGA
+# Handles both desktop (--user + --break-system-packages)
+# and HPC (conda env, no --user needed)
 # -----------------------------
 set(BUILD_ANUGA_CONTENT "#!/bin/bash
 set -euo pipefail
 
-# Ensure user local bin visible (meson/cython sometimes live here)
 export PATH=\"\$HOME/.local/bin:\$PATH\"
-
-# Use the exact Python interpreter resolved by CMake
 PY=\"${Python3_EXECUTABLE}\"
 
-# Prefer the env script we generate (single source of truth)
-if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" ]
-then
+if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" ]; then
   source \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" >/dev/null 2>&1 || true
 fi
 
-if ! command -v mpicc >/dev/null 2>&1
-then
-  echo \"ERROR: mpicc not found in PATH\"
-  exit 1
-fi
-
-# Sanity checks
-if ! command -v meson >/dev/null 2>&1
-then
-  echo \"ERROR: meson not found in PATH (run setup.sh first)\"
-  exit 1
-fi
+command -v mpicc >/dev/null 2>&1 || { echo \"ERROR: mpicc not found.\"; exit 1; }
+command -v meson >/dev/null 2>&1 || { echo \"ERROR: meson not found. Run setup.sh first.\"; exit 1; }
 
 cd \"${ANUGA_DIR}\"
-echo \"Building and installing ANUGA locally to: ~/.local/lib/python3.x/site-packages\"
+echo \"Building and installing ANUGA...\"
 
-# Detect if --break-system-packages is supported (modern Debian/Ubuntu)
-PIP_FLAGS=\"\"
-if \"\$PY\" -m pip install --help 2>&1 | grep -q \"break-system-packages\"; then
-  PIP_FLAGS=\"--break-system-packages\"
+# Detect if inside a conda env (then --user is not needed/wanted)
+IN_CONDA=false
+[ -n \"\${CONDA_PREFIX:-}\" ] && IN_CONDA=true
+
+# Detect --break-system-packages support
+PIP_EXTRA=\"\"
+if \"\$PY\" -m pip install --help 2>&1 | grep -q 'break-system-packages'; then
+  PIP_EXTRA=\"--break-system-packages\"
 fi
 
-# --user installs to ~/.local instead of system directories
-# --no-deps because setup.sh already installed all deps.
-# --no-build-isolation so it uses already-installed build deps.
-# --break-system-packages (if supported) allows install on externally-managed systems
-\"\$PY\" -m pip install -e . --no-build-isolation --no-deps --user \$PIP_FLAGS
-echo \"ANUGA installation complete (installed to user site-packages).\"
+if \$IN_CONDA; then
+  echo \"  Installing into conda env: \$CONDA_PREFIX\"
+  \"\$PY\" -m pip install -e . --no-build-isolation --no-deps
+else
+  echo \"  Installing to ~/.local (user site-packages)\"
+  \"\$PY\" -m pip install -e . --no-build-isolation --no-deps --user \$PIP_EXTRA
+fi
+
+echo \"ANUGA installation complete.\"
+\"\$PY\" -c 'import anuga; print(\"  ✓ ANUGA version:\", anuga.__version__)'
 ")
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/build_anuga.sh "${BUILD_ANUGA_CONTENT}")
@@ -171,53 +189,39 @@ add_custom_target(build_anuga
   COMMAND chmod +x ${CMAKE_CURRENT_BINARY_DIR}/build_anuga.sh
   COMMAND ${CMAKE_CURRENT_BINARY_DIR}/build_anuga.sh
   DEPENDS clone_anuga write_env
-  COMMENT "Installing ANUGA (editable, no deps, user install)"
+  COMMENT "Installing ANUGA"
 )
 
 # -----------------------------
-# Test ANUGA (no installing here)
+# Test ANUGA
 # -----------------------------
 set(TEST_ANUGA_CONTENT "#!/bin/bash
 set -euo pipefail
 
-export PATH=\"\$HOME/.local/bin:\$PATH\"
 PY=\"${Python3_EXECUTABLE}\"
 
-# Source MPI environment (so mpicc + LD_LIBRARY_PATH are correct)
-if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" ]\; then
+if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" ]; then
   source \"${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\" >/dev/null 2>&1 || true
 fi
 
 echo \"\"
 echo \"=== Testing ANUGA Installation ===\"
-echo \"\"
 
-echo \"[1/4] Testing mpi4py import...\"
-\"\$PY\" -c 'import mpi4py\; print(\"✓ mpi4py version:\", mpi4py.__version__)'
+echo \"[1/3] Testing mpi4py...\"
+\"\$PY\" -c 'import mpi4py; print(\"  ✓ mpi4py:\", mpi4py.__version__)'
 
-echo \"\"
-echo \"[2/4] Testing ANUGA import...\"
-\"\$PY\" -c 'import anuga\; print(\"✓ ANUGA version:\", anuga.__version__)'
+echo \"[2/3] Testing ANUGA import...\"
+\"\$PY\" -c 'import anuga; print(\"  ✓ ANUGA:\", anuga.__version__)'
 
-echo \"\"
-echo \"[3/4] Testing ANUGA MPI init view (ANUGA decides sequential vs MPI)...\"
-\"\$PY\" -c 'import anuga\; from anuga import myid, numprocs\; print(\"✓ myid:\", myid, \"numprocs:\", numprocs)'
+echo \"[3/3] Testing ANUGA MPI init...\"
+\"\$PY\" -c 'import anuga; from anuga import myid, numprocs; print(\"  ✓ myid:\", myid, \"| numprocs:\", numprocs)'
 
 echo \"\"
-echo \"[4/4] Verifying MPI compiler...\"
-if command -v mpicc >/dev/null 2>&1\; then
-  echo \"✓ MPI compiler: \$(command -v mpicc)\"
-  mpicc --version | head -n 1 || true
-else
-  echo \"✗ WARNING: mpicc not found\"
-fi
-
+echo \"=== All tests passed ===\"
 echo \"\"
-echo \"=== Tests completed ===\"
-echo \"\"
-echo \"To use ANUGA with MPI in your scripts:\"
+echo \"Run with MPI:\"
 echo \"  source ${CMAKE_CURRENT_BINARY_DIR}/setup_mpi_env.sh\"
-echo \"\"
+echo \"  mpirun -np 4 python3 simulation.py\"
 ")
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/test_anuga.sh "${TEST_ANUGA_CONTENT}")
@@ -230,37 +234,27 @@ add_custom_target(test_anuga
 )
 
 # -----------------------------
-# Optional: Toolchain checks (Node/GeoServer env created by setup.sh)
-# This does NOT install tools\; it just verifies they are visible when env is sourced.
+# Optional tools check (desktop only)
 # -----------------------------
 set(TEST_TOOLS_CONTENT "#!/bin/bash
 set -euo pipefail
 
-# setup.sh generates build/setup_tools_env.sh (sibling to this build dir)
-if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_tools_env.sh\" ]\; then
+if [ -f \"${CMAKE_CURRENT_BINARY_DIR}/setup_tools_env.sh\" ]; then
   source \"${CMAKE_CURRENT_BINARY_DIR}/setup_tools_env.sh\" >/dev/null 2>&1 || true
 fi
 
 echo \"\"
-echo \"=== Testing Tools (best effort) ===\"
-echo \"\"
+echo \"=== Testing Optional Tools ===\"
 
-if command -v node >/dev/null 2>&1\; then
-  echo \"✓ Node: \$(node -v)\"
-else
-  echo \"⚠ Node not on PATH (expected if Node tarball not provided/extracted)\"
-fi
+command -v node >/dev/null 2>&1 \\
+  && echo \"  ✓ Node: \$(node -v)\" \\
+  || echo \"  ⚠ Node not on PATH (expected if not on desktop Linux)\"
 
-if [ -n \"\${GEOSERVER_HOME:-}\" ] && [ -d \"\$GEOSERVER_HOME\" ]\; then
-  echo \"✓ GEOSERVER_HOME=\$GEOSERVER_HOME\"
-  [ -x \"\$GEOSERVER_HOME/bin/startup.sh\" ] && echo \"✓ GeoServer startup.sh present\"
-else
-  echo \"⚠ GeoServer not configured (expected if zip not provided/unpacked)\"
-fi
+[ -n \"\${GEOSERVER_HOME:-}\" ] && [ -d \"\$GEOSERVER_HOME\" ] \\
+  && echo \"  ✓ GEOSERVER_HOME=\$GEOSERVER_HOME\" \\
+  || echo \"  ⚠ GeoServer not configured (expected on HPC)\"
 
-echo \"\"
 echo \"=== Tool checks done ===\"
-echo \"\"
 ")
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/test_tools.sh "${TEST_TOOLS_CONTENT}")
@@ -268,36 +262,45 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/test_tools.sh "${TEST_TOOLS_CONTENT}")
 add_custom_target(test_tools
   COMMAND chmod +x ${CMAKE_CURRENT_BINARY_DIR}/test_tools.sh
   COMMAND ${CMAKE_CURRENT_BINARY_DIR}/test_tools.sh
-  COMMENT "Testing Node/GeoServer environment (no installs)"
+  COMMENT "Testing optional tools (Node/GeoServer)"
 )
 
 # -----------------------------
-# Master setup target (NO 'ALL' to avoid surprise builds)
+# Master targets
 # -----------------------------
 add_custom_target(setup
   DEPENDS build_anuga
-  COMMENT "Complete ANUGA setup (clone + editable install to ~/.local)"
+  COMMENT "Complete ANUGA setup"
 )
 
-# -----------------------------
-# Clean ANUGA source dir (optional)
-# -----------------------------
 add_custom_target(clean_anuga
   COMMAND ${CMAKE_COMMAND} -E remove_directory ${ANUGA_DIR}
   COMMENT "Removing ANUGA source directory"
 )
 
+# -----------------------------
+# Summary
+# -----------------------------
 message(STATUS "")
 message(STATUS "========================================")
-message(STATUS "ANUGA CMake Configuration Summary")
+message(STATUS "ANUGA CMake Configuration")
 message(STATUS "========================================")
-message(STATUS "Python interpreter: ${Python3_EXECUTABLE}")
-message(STATUS "Installation target: ~/.local (user site-packages)")
-message(STATUS "Build targets:")
-message(STATUS "  make setup         - Clone + editable install ANUGA to ~/.local")
-message(STATUS "  make test_anuga    - Test installation")
-message(STATUS "  make test_tools    - Best-effort tool checks (Node/GeoServer env)")
-message(STATUS "  make clean_anuga   - Remove ANUGA source")
+message(STATUS "Python      : ${Python3_EXECUTABLE}")
+message(STATUS "MPI C       : ${MPI_C_COMPILER}")
+message(STATUS "MPI CXX     : ${MPI_CXX_COMPILER}")
+if(NETCDF_FOUND)
+  message(STATUS "NetCDF      : ${NETCDF_VERSION} (system)")
+else()
+  message(STATUS "NetCDF      : via conda (runtime)")
+endif()
+message(STATUS "ANUGA dir   : ${ANUGA_DIR}")
 message(STATUS "")
-message(STATUS "Note: setup.sh installs dependencies and may generate setup_tools_env.sh in build/.")
+message(STATUS "Targets:")
+message(STATUS "  make setup       - Clone + install ANUGA")
+message(STATUS "  make test_anuga  - Test mpi4py + ANUGA")
+message(STATUS "  make test_tools  - Check Node/GeoServer (desktop only)")
+message(STATUS "  make clean_anuga - Remove ANUGA source")
+message(STATUS "")
+message(STATUS "NOTE: On HPC, load MPI module BEFORE running cmake:")
+message(STATUS "  module load openmpi-4.1.6 && cmake ..")
 message(STATUS "========================================")
