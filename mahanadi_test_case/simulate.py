@@ -31,7 +31,7 @@ def main():
                 print("STARTING AUTOMATED DEPLOYMENT...")
                 print("="*70)
                 bridge.run_post_processing(
-                    target_sww_name=cfg.paths.output_file,
+                    run_id=cfg.paths.output_file,
                     generate_timeseries=cfg.postprocessing.generate_timeseries
                 )
                 print("\nDEPLOYMENT COMPLETE. Check your React App.")

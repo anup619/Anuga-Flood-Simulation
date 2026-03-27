@@ -410,6 +410,6 @@ if __name__ == "__main__":
     generate_ts = args.timeseries or bridge.cfg.postprocessing.generate_timeseries
     
     if args.run_id:
-        bridge.run_post_processing(target_sww_name=args.run_id, generate_timeseries=generate_ts)
+        bridge.run_post_processing(run_id=args.run_id, generate_timeseries=generate_ts)
     else:
         bridge.run_post_processing(generate_timeseries=generate_ts)
